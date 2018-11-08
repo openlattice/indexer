@@ -32,7 +32,6 @@ import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.nd4j.linalg.factory.Nd4j
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import java.lang.Math.round
 import java.util.*
 import java.util.concurrent.TimeUnit
 
