@@ -32,6 +32,7 @@ import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.nd4j.linalg.factory.Nd4j
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.lang.Math.round
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -43,7 +44,7 @@ const val THRESHOLD = 0.9
 @Component
 class SocratesMatcher(model: MultiLayerNetwork, private val fqnToIdMap: Map<FullQualifiedName, UUID>) : Matcher {
     companion object {
-        private val logger = LoggerFactory.getLogger(SocratesMatcher::class.java)
+        val logger = LoggerFactory.getLogger(SocratesMatcher::class.java)
     }
 
     private var localModel = ThreadLocal.withInitial { model }
@@ -130,5 +131,12 @@ class SocratesMatcher(model: MultiLayerNetwork, private val fqnToIdMap: Map<Full
 }
 
 fun MultiLayerNetwork.getModelScore(features: Array<DoubleArray>): Double {
-    return output(Nd4j.create(features)).getDouble(0)
+    for (item: Int in 1..10) {
+        try {
+            return output(Nd4j.create(features)).getDouble(0);
+        } catch (e: Exception) {
+            SocratesMatcher.logger.info("Unable to compute score, attempt ", item);
+        }
+    }
+    return 0.0;
 }
