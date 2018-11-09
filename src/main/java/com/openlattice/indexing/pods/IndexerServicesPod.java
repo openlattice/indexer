@@ -21,6 +21,7 @@
 package com.openlattice.indexing.pods;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.openlattice.authorization.AuthorizingComponent.logger;
 import static com.openlattice.datastore.util.Util.returnAndLog;
 import static com.openlattice.linking.MatcherKt.DL4J;
 import static com.openlattice.linking.MatcherKt.KERAS;
@@ -30,6 +31,7 @@ import com.dataloom.mappers.ObjectMappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.eventbus.EventBus;
 import com.hazelcast.core.HazelcastInstance;
+import com.kryptnostic.rhizome.configuration.ConfigurationConstants;
 import com.kryptnostic.rhizome.configuration.ConfigurationConstants.Profiles;
 import com.kryptnostic.rhizome.configuration.amazon.AmazonLaunchConfiguration;
 import com.kryptnostic.rhizome.configuration.service.ConfigurationService;
@@ -40,6 +42,10 @@ import com.openlattice.authorization.*;
 import com.openlattice.bootstrap.AuthorizationBootstrap;
 import com.openlattice.bootstrap.OrganizationBootstrap;
 import com.openlattice.conductor.rpc.ConductorConfiguration;
+import com.openlattice.data.storage.AwsBlobDataService;
+import com.openlattice.data.storage.ByteBlobDataManager;
+import com.openlattice.data.storage.LocalBlobDataService;
+import com.openlattice.datastore.configuration.DatastoreConfiguration;
 import com.openlattice.datastore.services.EdmManager;
 import com.openlattice.datastore.services.EdmService;
 import com.openlattice.edm.PostgresEdmManager;
@@ -73,6 +79,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Profile;
 
 @Configuration
@@ -129,6 +136,38 @@ public class IndexerServicesPod {
 
         logger.info( "Using aws conductor configuration: {}", config );
         return config;
+    }
+
+    @Bean(name = "datastoreConfiguration")
+    @Profile( ConfigurationConstants.Profiles.LOCAL_CONFIGURATION_PROFILE )
+    public DatastoreConfiguration getLocalDatastoreConfiguration() {
+        DatastoreConfiguration config = ResourceConfigurationLoader.loadConfiguration( DatastoreConfiguration.class );
+        logger.info( "Using local datastore configuration: {}", config );
+        return config;
+    }
+
+    @Bean( name = "datastoreConfiguration" )
+    public DatastoreConfiguration getAwsDatastoreConfiguration() {
+        DatastoreConfiguration config = ResourceConfigurationLoader.loadConfigurationFromS3( s3,
+                awsLaunchConfig.getBucket(),
+                awsLaunchConfig.getFolder(),
+                DatastoreConfiguration.class );
+        logger.info( "Using aws datastore configuration: {}", config );
+        return config;
+    }
+
+    @Bean(name = "byteBlobDataManager")
+    @DependsOn("datastoreConfiguration")
+    @Profile(Profiles.LOCAL_CONFIGURATION_PROFILE)
+    public ByteBlobDataManager localBlobDataManager() {
+        return new LocalBlobDataService(getLocalDatastoreConfiguration(), hikariDataSource);
+    }
+
+    @Bean(name = "byteBlobDataManager")
+    @DependsOn("datastoreConfiguration")
+    @Profile({Profiles.AWS_CONFIGURATION_PROFILE, Profiles.AWS_TESTING_PROFILE})
+    public ByteBlobDataManager awsBlobDataManager() {
+        return new AwsBlobDataService(getAwsDatastoreConfiguration());
     }
 
     @Bean
