@@ -44,6 +44,7 @@ import com.openlattice.bootstrap.OrganizationBootstrap;
 import com.openlattice.conductor.rpc.ConductorConfiguration;
 import com.openlattice.data.storage.AwsBlobDataService;
 import com.openlattice.data.storage.ByteBlobDataManager;
+import com.openlattice.data.storage.LocalAwsBlobDataService;
 import com.openlattice.data.storage.LocalBlobDataService;
 import com.openlattice.datastore.configuration.DatastoreConfiguration;
 import com.openlattice.datastore.services.EdmManager;
@@ -54,6 +55,7 @@ import com.openlattice.edm.schemas.SchemaQueryService;
 import com.openlattice.edm.schemas.manager.HazelcastSchemaManager;
 import com.openlattice.edm.schemas.postgres.PostgresSchemaQueryService;
 import com.openlattice.hazelcast.HazelcastQueue;
+import com.openlattice.indexing.configuration.DatastoreProfiles;
 import com.openlattice.linking.Matcher;
 import com.openlattice.linking.matching.SocratesMatcher;
 import com.openlattice.linking.util.PersonProperties;
@@ -138,15 +140,16 @@ public class IndexerServicesPod {
         return config;
     }
 
-    @Bean(name = "datastoreConfiguration")
-    @Profile( ConfigurationConstants.Profiles.LOCAL_CONFIGURATION_PROFILE )
-    public DatastoreConfiguration getLocalDatastoreConfiguration() {
+    @Bean( name = "datastoreConfiguration" )
+    @Profile( { Profiles.LOCAL_CONFIGURATION_PROFILE } )
+    public DatastoreConfiguration getLocalAwsDatastoreConfiguration() {
         DatastoreConfiguration config = ResourceConfigurationLoader.loadConfiguration( DatastoreConfiguration.class );
-        logger.info( "Using local datastore configuration: {}", config );
+        logger.info( "Using local aws datastore configuration: {}", config );
         return config;
     }
 
     @Bean( name = "datastoreConfiguration" )
+    @Profile( { Profiles.AWS_CONFIGURATION_PROFILE, Profiles.AWS_TESTING_PROFILE } )
     public DatastoreConfiguration getAwsDatastoreConfiguration() {
         DatastoreConfiguration config = ResourceConfigurationLoader.loadConfigurationFromS3( s3,
                 awsLaunchConfig.getBucket(),
@@ -156,18 +159,25 @@ public class IndexerServicesPod {
         return config;
     }
 
-    @Bean(name = "byteBlobDataManager")
-    @DependsOn("datastoreConfiguration")
-    @Profile(Profiles.LOCAL_CONFIGURATION_PROFILE)
+    @Bean( name = "byteBlobDataManager" )
+    @DependsOn( "datastoreConfiguration" )
+    @Profile( { DatastoreProfiles.MEDIA_LOCAL_PROFILE } )
     public ByteBlobDataManager localBlobDataManager() {
-        return new LocalBlobDataService(getLocalDatastoreConfiguration(), hikariDataSource);
+        return new LocalBlobDataService( hikariDataSource );
     }
 
-    @Bean(name = "byteBlobDataManager")
-    @DependsOn("datastoreConfiguration")
-    @Profile({Profiles.AWS_CONFIGURATION_PROFILE, Profiles.AWS_TESTING_PROFILE})
+    @Bean( name = "byteBlobDataManager" )
+    @DependsOn( "datastoreConfiguration" )
+    @Profile( { DatastoreProfiles.MEDIA_LOCAL_AWS_PROFILE } )
+    public ByteBlobDataManager localAwsBlobDataManager() {
+        return new LocalAwsBlobDataService( getLocalAwsDatastoreConfiguration() );
+    }
+
+    @Bean( name = "byteBlobDataManager" )
+    @DependsOn( "datastoreConfiguration" )
+    @Profile( { Profiles.AWS_CONFIGURATION_PROFILE, Profiles.AWS_TESTING_PROFILE } )
     public ByteBlobDataManager awsBlobDataManager() {
-        return new AwsBlobDataService(getAwsDatastoreConfiguration());
+        return new AwsBlobDataService( getAwsDatastoreConfiguration() );
     }
 
     @Bean
