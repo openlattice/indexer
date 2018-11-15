@@ -20,18 +20,11 @@
 
 package com.openlattice.indexing.pods;
 
-import static com.google.common.base.Preconditions.checkState;
-import static com.openlattice.authorization.AuthorizingComponent.logger;
-import static com.openlattice.datastore.util.Util.returnAndLog;
-import static com.openlattice.linking.MatcherKt.DL4J;
-import static com.openlattice.linking.MatcherKt.KERAS;
-
 import com.amazonaws.services.s3.AmazonS3;
 import com.dataloom.mappers.ObjectMappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.eventbus.EventBus;
 import com.hazelcast.core.HazelcastInstance;
-import com.kryptnostic.rhizome.configuration.ConfigurationConstants;
 import com.kryptnostic.rhizome.configuration.ConfigurationConstants.Profiles;
 import com.kryptnostic.rhizome.configuration.amazon.AmazonLaunchConfiguration;
 import com.kryptnostic.rhizome.configuration.service.ConfigurationService;
@@ -44,11 +37,11 @@ import com.openlattice.bootstrap.OrganizationBootstrap;
 import com.openlattice.conductor.rpc.ConductorConfiguration;
 import com.openlattice.data.storage.AwsBlobDataService;
 import com.openlattice.data.storage.ByteBlobDataManager;
-import com.openlattice.data.storage.LocalAwsBlobDataService;
 import com.openlattice.data.storage.LocalBlobDataService;
 import com.openlattice.datastore.configuration.DatastoreConfiguration;
 import com.openlattice.datastore.services.EdmManager;
 import com.openlattice.datastore.services.EdmService;
+import com.openlattice.directory.UserDirectoryService;
 import com.openlattice.edm.PostgresEdmManager;
 import com.openlattice.edm.properties.PostgresTypeManager;
 import com.openlattice.edm.schemas.SchemaQueryService;
@@ -60,16 +53,11 @@ import com.openlattice.linking.Matcher;
 import com.openlattice.linking.matching.SocratesMatcher;
 import com.openlattice.linking.util.PersonProperties;
 import com.openlattice.mail.config.MailServiceRequirements;
-import com.openlattice.directory.UserDirectoryService;
 import com.openlattice.organizations.HazelcastOrganizationService;
 import com.openlattice.organizations.roles.HazelcastPrincipalService;
 import com.openlattice.organizations.roles.SecurePrincipalsManager;
 import com.openlattice.postgres.PostgresTableManager;
 import com.zaxxer.hikari.HikariDataSource;
-
-import java.io.IOException;
-import javax.inject.Inject;
-
 import org.deeplearning4j.nn.modelimport.keras.KerasModelImport;
 import org.deeplearning4j.nn.modelimport.keras.exceptions.InvalidKerasConfigurationException;
 import org.deeplearning4j.nn.modelimport.keras.exceptions.UnsupportedKerasConfigurationException;
@@ -83,6 +71,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Profile;
+
+import javax.inject.Inject;
+import java.io.IOException;
+
+import static com.google.common.base.Preconditions.checkState;
+import static com.openlattice.datastore.util.Util.returnAndLog;
+import static com.openlattice.linking.MatcherKt.DL4J;
+import static com.openlattice.linking.MatcherKt.KERAS;
 
 @Configuration
 public class IndexerServicesPod {
@@ -170,7 +166,7 @@ public class IndexerServicesPod {
     @DependsOn( "datastoreConfiguration" )
     @Profile( { DatastoreProfiles.MEDIA_LOCAL_AWS_PROFILE } )
     public ByteBlobDataManager localAwsBlobDataManager() {
-        return new LocalAwsBlobDataService( getLocalAwsDatastoreConfiguration() );
+        return new AwsBlobDataService( getLocalAwsDatastoreConfiguration() );
     }
 
     @Bean( name = "byteBlobDataManager" )
