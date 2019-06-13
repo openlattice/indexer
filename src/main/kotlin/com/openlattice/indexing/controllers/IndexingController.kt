@@ -83,6 +83,4 @@ class IndexingController : IndexAdminApi, AuthorizingComponent {
         ensureAdminAccess()
         return indexingService.clearIndexingJobs()
     }
-
-
 }
