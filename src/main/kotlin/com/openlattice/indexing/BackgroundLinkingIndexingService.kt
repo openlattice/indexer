@@ -239,6 +239,7 @@ class BackgroundLinkingIndexingService(
     private fun selectLinkingIdsByEntitySetIds(): String {
         return "SELECT ${ENTITY_SET_ID.name}, array_agg(${LINKING_ID.name}) as ${ENTITY_KEY_IDS_COL.name} " +
                 "FROM ${IDS.name} " +
-                "WHERE ${LINKING_ID.name} = ANY(?) "
+                "WHERE ${LINKING_ID.name} = ANY(?) " +
+                "GROUP BY ${ENTITY_SET_ID.name}"
     }
 }
