@@ -56,7 +56,10 @@ private val logger = LoggerFactory.getLogger(IndexingService::class.java)
 private const val BATCH_LIMIT = 1_000
 private val LB_UUID = UUID(0, 0)
 private val IDS_WITH_LAST_WRITE = "SELECT ${ID.name}, ${LAST_WRITE.name} FROM ${IDS.name} " +
-        "WHERE ${ENTITY_SET_ID.name} = ? AND ${PARTITION.name} = ? AND ${ID.name} = ANY(?) " +
+        "WHERE ${ENTITY_SET_ID.name} = ? " +
+          "AND ${PARTITION.name} = ? " +
+          "AND ${ID.name} = ANY(?) " +
+          "AND ${PARTITIONS_VERSION.name} = ? " +
         "ORDER BY ${ID.name} LIMIT $BATCH_LIMIT"
 
 /**
@@ -116,6 +119,7 @@ class IndexingService(
                                     currentPartitionsInfo.partitions.toList()
                             )
                         }
+                        val partitionsVersion = entitySet.partitionsVersion
                         val partitionCursor = indexingPartitionProgress.getOrPut(entitySetId) { 0 }
 
                         val propertyTypeMap = propertyTypes.getAll(
@@ -132,9 +136,9 @@ class IndexingService(
 
                                         //An empty set of ids means all keys
                                         if (entityKeyIds.isEmpty()) {
-                                            getNextBatch(entitySetId, partitions[i], cursor).toMap()
+                                            getNextBatch(entitySetId, partitions[i], partitionsVersion, cursor).toMap()
                                         } else {
-                                            getEntitiesWithLastWrite(entitySet.id, partitions, entityKeyIds).toMap()
+                                            getEntitiesWithLastWrite(entitySet.id, partitions, partitionsVersion, entityKeyIds).toMap()
                                         }
 
                                     }
@@ -163,6 +167,7 @@ class IndexingService(
                                     entityKeyIdsWithLastWrite = getNextBatch(
                                             entitySetId,
                                             partitions[i],
+                                            partitionsVersion,
                                             cursor
                                     ).toMap()
                                 }
@@ -222,21 +227,27 @@ class IndexingService(
         }
 
         return "SELECT ${ID.name}, ${LAST_WRITE.name} FROM ${IDS.name} " +
-                "WHERE ${ENTITY_SET_ID.name} = ? AND ${PARTITION.name} = ? AND ${VERSION.name} > 0 $lowerBoundSql " +
+                "WHERE ${ENTITY_SET_ID.name} = ? " +
+                  "AND ${PARTITION.name} = ? " +
+                  "AND ${PARTITIONS_VERSION.name} = ? " +
+                  "AND ${VERSION.name} > 0 " +
+                  "$lowerBoundSql " +
                 "ORDER BY ${ID.name} LIMIT $BATCH_LIMIT"
     }
 
     private fun getNextBatch(
             entitySetId: UUID,
             partition: Int,
+            partitionsVersion: Int,
             cursor: UUID,
             useLowerBound: Boolean = (cursor !== LB_UUID)
     ): BasePostgresIterable<Pair<UUID, OffsetDateTime>> {
         return BasePostgresIterable(PreparedStatementHolderSupplier(hds, getNextBatchQuery(useLowerBound)) { ps ->
             ps.setObject(1, entitySetId)
             ps.setInt(2, partition)
+            ps.setInt(3, partitionsVersion)
             if (useLowerBound) {
-                ps.setObject(3, cursor)
+                ps.setObject(4, cursor)
             }
         }) { ResultSetAdapters.id(it) to ResultSetAdapters.lastWriteTyped(it) }
     }
@@ -245,24 +256,27 @@ class IndexingService(
     private fun getEntitiesWithLastWrite(
             entitySetId: UUID,
             partitions: List<Int>,
+            partitionsVersion: Int,
             entityKeyIds: Set<UUID>
     ): Map<UUID, OffsetDateTime> {
         return entityKeyIds
                 .groupBy { getPartition(it, partitions) }
-                .flatMap { (partition, ids) -> getEntitiesWithLastWrite(entitySetId, partition, ids) }
+                .flatMap { (partition, ids) -> getEntitiesWithLastWrite(entitySetId, partition, partitionsVersion, ids) }
                 .toMap()
     }
 
     private fun getEntitiesWithLastWrite(
             entitySetId: UUID,
             partition: Int,
+            partitionsVersion: Int,
             entityKeyIds: Collection<UUID>
     ): BasePostgresIterable<Pair<UUID, OffsetDateTime>> {
         return BasePostgresIterable(PreparedStatementHolderSupplier(hds, IDS_WITH_LAST_WRITE) { ps ->
             val idsArray = PostgresArrays.createUuidArray(ps.connection, entityKeyIds)
             ps.setObject(1, entitySetId)
             ps.setInt(2, partition)
-            ps.setArray(3, idsArray)
+            ps.setInt(3, partitionsVersion)
+            ps.setArray(4, idsArray)
 
         }) { ResultSetAdapters.id(it) to ResultSetAdapters.lastWriteTyped(it) }
     }
