@@ -102,6 +102,7 @@ public class IndexerPostConfigurationServicesPod {
     @Bean
     public BackgroundIndexingService backgroundIndexingService() {
         return new BackgroundIndexingService(
+                executor,
                 hazelcastInstance,
                 indexerConfiguration,
                 hikariDataSource,

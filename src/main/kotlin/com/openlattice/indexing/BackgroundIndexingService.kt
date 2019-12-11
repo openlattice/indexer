@@ -22,10 +22,10 @@
 package com.openlattice.indexing
 
 import com.google.common.base.Stopwatch
+import com.google.common.collect.Maps
+import com.google.common.util.concurrent.ListeningExecutorService
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.core.IMap
-import com.hazelcast.query.Predicate
-import com.hazelcast.query.Predicates
 import com.hazelcast.query.QueryConstants
 import com.openlattice.conductor.rpc.ConductorElasticsearchApi
 import com.openlattice.data.storage.IndexingMetadataManager
@@ -35,6 +35,7 @@ import com.openlattice.edm.EntitySet
 import com.openlattice.edm.type.EntityType
 import com.openlattice.edm.type.PropertyType
 import com.openlattice.hazelcast.HazelcastMap
+import com.openlattice.hazelcast.HazelcastQueue
 import com.openlattice.indexing.configuration.IndexerConfiguration
 import com.openlattice.postgres.DataTables.LAST_INDEX
 import com.openlattice.postgres.DataTables.LAST_WRITE
@@ -44,104 +45,76 @@ import com.openlattice.postgres.PostgresTable.IDS
 import com.openlattice.postgres.ResultSetAdapters
 import com.openlattice.postgres.streams.BasePostgresIterable
 import com.openlattice.postgres.streams.PreparedStatementHolderSupplier
+import com.openlattice.rhizome.core.service.ContinuousRepeatingTaskService
 import com.zaxxer.hikari.HikariDataSource
 import org.apache.olingo.commons.api.edm.EdmPrimitiveTypeKind
 import org.slf4j.LoggerFactory
-import org.springframework.scheduling.annotation.Scheduled
 import java.time.OffsetDateTime
 import java.util.*
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
 
 const val EXPIRATION_MILLIS = 60_000L
-const val INDEX_RATE = 300_000L
 const val FETCH_SIZE = 128_000
+const val DEFAULT_CHUNK_SIZE = 10_000
 
 /** IMPORTANT! If this number is too big, elasticsearch will explode and everything will go down. Calibrate carefully. **/
 const val INDEX_SIZE = 1_000
 
 class BackgroundIndexingService(
+        executor: ListeningExecutorService,
         hazelcastInstance: HazelcastInstance,
-        private val indexerConfiguration: IndexerConfiguration,
+        private val configuration: IndexerConfiguration,
         private val hds: HikariDataSource,
         private val dataQueryService: PostgresEntityDataQueryService,
         private val elasticsearchApi: ConductorElasticsearchApi,
         private val dataManager: IndexingMetadataManager
+): ContinuousRepeatingTaskService<EntitySet>(
+        executor,
+        hazelcastInstance,
+        LoggerFactory.getLogger(BackgroundIndexingService::class.java),
+        HazelcastQueue.BACKGROUND_INDEXING.name,
+        HazelcastMap.INDEXING_LOCKS.name,
+        Runtime.getRuntime().availableProcessors(),
+        DEFAULT_CHUNK_SIZE,
+        EXPIRATION_MILLIS
 ) {
     companion object {
-        private val logger = LoggerFactory.getLogger(BackgroundIndexingService::class.java)!!
+        private val logger = LoggerFactory.getLogger(BackgroundIndexingService::class.java)
     }
 
     private val propertyTypes: IMap<UUID, PropertyType> = hazelcastInstance.getMap(HazelcastMap.PROPERTY_TYPES.name)
     private val entityTypes: IMap<UUID, EntityType> = hazelcastInstance.getMap(HazelcastMap.ENTITY_TYPES.name)
     private val entitySets: IMap<UUID, EntitySet> = hazelcastInstance.getMap(HazelcastMap.ENTITY_SETS.name)
 
-    private val indexingLocks: IMap<UUID, Long> = hazelcastInstance.getMap(HazelcastMap.INDEXING_LOCKS.name)
-
     init {
+        val indexingLocks: IMap<UUID, Long> = hazelcastInstance.getMap(HazelcastMap.INDEXING_LOCKS.name)
         indexingLocks.addIndex(QueryConstants.THIS_ATTRIBUTE_NAME.value(), true)
     }
 
-    private val taskLock = ReentrantLock()
-
-    @Suppress("UNCHECKED_CAST", "UNUSED")
-    @Scheduled(fixedRate = EXPIRATION_MILLIS)
-    fun scavengeIndexingLocks() {
-        indexingLocks.removeAll(
-                Predicates.lessThan(
-                        QueryConstants.THIS_ATTRIBUTE_NAME.value(),
-                        System.currentTimeMillis()
-                ) as Predicate<UUID, Long>
-        )
-    }
-
-    @Suppress("UNUSED")
-    @Scheduled(fixedRate = INDEX_RATE)
-    fun indexUpdatedEntitySets() {
-        logger.info("Starting background indexing task.")
-        //Keep number of indexing jobs under control
-        if (!taskLock.tryLock()) {
-            logger.info("Not starting new indexing job as an existing one is running.")
+    override fun startupChecks() {
+        ensureAllEntityTypeIndicesExist()
+        if (!configuration.backgroundIndexingEnabled) {
+            logger.info("Skipping background indexing as it is not enabled.")
             return
         }
-        try {
-            ensureAllEntityTypeIndicesExist()
-            if (!indexerConfiguration.backgroundIndexingEnabled) {
-                logger.info("Skipping background indexing as it is not enabled.")
-                return
-            }
-            val w = Stopwatch.createStarted()
-            //We shuffle entity sets to make sure we have a chance to work share and index everything
-            val lockedEntitySets = entitySets.values
-                    .shuffled()
-                    .filter { tryLockEntitySet(it) }
-                    .filter { it.name != "OpenLattice Audit Entity Set" } //TODO: Clean out audit entity set from prod
+    }
 
-            val totalIndexed = lockedEntitySets
-                    .parallelStream()
-                    .filter { !it.isLinking }
-                    .mapToInt { indexEntitySet(it) }
-                    .sum()
+    override fun operate(candidate: EntitySet) {
+        indexEntitySet(candidate)
+    }
 
-            lockedEntitySets.forEach(this::deleteIndexingLock)
-
-            logger.info(
-                    "Completed indexing {} elements in {} ms",
-                    totalIndexed,
-                    w.elapsed(TimeUnit.MILLISECONDS)
-            )
-        } finally {
-            taskLock.unlock()
-        }
+    override fun sourceSet(): Sequence<EntitySet> {
+        return entitySets.values.asSequence()
+                .filter { it.name != "OpenLattice Audit Entity Set" }
+                .filter { !it.isLinking }
     }
 
     private fun ensureAllEntityTypeIndicesExist() {
         val existingIndices = elasticsearchApi.entityTypesWithIndices
         val missingIndices = entityTypes.keys - existingIndices
         if (missingIndices.isNotEmpty()) {
-            val missingEntityTypes = entityTypes.getAll(missingIndices)
-            logger.info("The following entity types were missing indices: {}", missingEntityTypes.keys)
-            missingEntityTypes.values.forEach { et ->
+            logger.info("The following entity types were missing indices:")
+            entityTypes.getAll(missingIndices).values.forEach { et ->
                 val missingEntityTypePropertyTypes = propertyTypes.getAll(et.properties)
                 elasticsearchApi.saveEntityTypeToElasticsearch(
                         et,
@@ -238,7 +211,7 @@ class BackgroundIndexingService(
         var entityKeyIdsIterator = entityKeyIdsWithLastWrite.iterator()
 
         while (entityKeyIdsIterator.hasNext()) {
-            updateExpiration(entitySet)
+            refreshExpiration(entitySet)
             while (entityKeyIdsIterator.hasNext()) {
                 val batch = getBatch(entityKeyIdsIterator)
                 indexCount += if (indexTombstoned) {
@@ -344,20 +317,9 @@ class BackgroundIndexingService(
         return indexCount
     }
 
-    private fun tryLockEntitySet(entitySet: EntitySet): Boolean {
-        return indexingLocks.putIfAbsent(entitySet.id, System.currentTimeMillis() + EXPIRATION_MILLIS) == null
-    }
-
-    private fun deleteIndexingLock(entitySet: EntitySet) {
-        indexingLocks.delete(entitySet.id)
-    }
-
-    private fun updateExpiration(entitySet: EntitySet) {
-        indexingLocks.set(entitySet.id, System.currentTimeMillis() + EXPIRATION_MILLIS)
-    }
 
     private fun getBatch(entityKeyIdStream: Iterator<Pair<UUID, OffsetDateTime>>): Map<UUID, OffsetDateTime> {
-        val entityKeyIds = HashMap<UUID, OffsetDateTime>(INDEX_SIZE)
+        val entityKeyIds = Maps.newHashMapWithExpectedSize<UUID, OffsetDateTime>(INDEX_SIZE)
 
         var i = 0
         while (entityKeyIdStream.hasNext() && i < INDEX_SIZE) {
