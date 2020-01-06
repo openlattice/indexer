@@ -61,6 +61,7 @@ import com.openlattice.graph.core.GraphService;
 import com.openlattice.hazelcast.HazelcastQueue;
 import com.openlattice.ids.HazelcastIdGenerationService;
 import com.openlattice.ids.HazelcastLongIdService;
+import com.openlattice.ids.IdCipherManager;
 import com.openlattice.indexing.configuration.IndexerConfiguration;
 import com.openlattice.kindling.search.ConductorElasticsearchImpl;
 import com.openlattice.mail.config.MailServiceRequirements;
@@ -287,8 +288,14 @@ public class IndexerServicesPod {
                 authorizationManager(),
                 partitionManager(),
                 dataModelService(),
+                idCipherManager(),
                 auditingConfiguration
         );
+    }
+
+    @Bean
+    public IdCipherManager idCipherManager() {
+        return new IdCipherManager( hazelcastInstance );
     }
 
     @Bean
