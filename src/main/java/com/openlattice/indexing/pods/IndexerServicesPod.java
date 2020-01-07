@@ -348,7 +348,9 @@ public class IndexerServicesPod {
 
     @Bean
     public DataGraphManager dataGraphService() {
-        return new DataGraphService( graphApi(), idService(), entityDatastore(), postgresEntitySetSizeCacheManager() );
+        return new DataGraphService(
+                graphApi(), idService(), entityDatastore(), postgresEntitySetSizeCacheManager(), idCipherManager()
+        );
     }
 
     @Bean ExternalDatabaseManagementService edms() {
