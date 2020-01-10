@@ -22,7 +22,6 @@
 package com.openlattice.indexing
 
 import com.google.common.base.Stopwatch
-import com.google.common.collect.Maps
 import com.google.common.util.concurrent.ListeningExecutorService
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.core.IMap
@@ -94,11 +93,11 @@ class BackgroundIndexingService(
     }
 
     override fun startupChecks() {
-        ensureAllEntityTypeIndicesExist()
         if (!configuration.backgroundIndexingEnabled) {
             logger.info("Skipping background indexing as it is not enabled.")
             return
         }
+        ensureAllEntityTypeIndicesExist()
     }
 
     override fun operate(candidate: EntitySet) {
