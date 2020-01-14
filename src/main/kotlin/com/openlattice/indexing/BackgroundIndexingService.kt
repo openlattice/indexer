@@ -25,7 +25,6 @@ import com.google.common.base.Stopwatch
 import com.google.common.util.concurrent.ListeningExecutorService
 import com.hazelcast.core.HazelcastInstance
 import com.hazelcast.core.IMap
-import com.hazelcast.query.QueryConstants
 import com.openlattice.conductor.rpc.ConductorElasticsearchApi
 import com.openlattice.data.storage.IndexingMetadataManager
 import com.openlattice.data.storage.MetadataOption
@@ -87,11 +86,6 @@ class BackgroundIndexingService(
     private val entityTypes: IMap<UUID, EntityType> = hazelcastInstance.getMap(HazelcastMap.ENTITY_TYPES.name)
     private val entitySets: IMap<UUID, EntitySet> = hazelcastInstance.getMap(HazelcastMap.ENTITY_SETS.name)
 
-    init {
-        val indexingLocks: IMap<UUID, Long> = hazelcastInstance.getMap(HazelcastMap.INDEXING_LOCKS.name)
-        indexingLocks.addIndex(QueryConstants.THIS_ATTRIBUTE_NAME.value(), true)
-    }
-
     override fun startupChecks() {
         if (!configuration.backgroundIndexingEnabled) {
             logger.info("Skipping background indexing as it is not enabled.")
@@ -104,7 +98,7 @@ class BackgroundIndexingService(
         indexEntitySet(candidate)
     }
 
-    override fun sourceSet(): Sequence<EntitySet> {
+    override fun sourceSequence(): Sequence<EntitySet> {
         return entitySets.values.asSequence()
                 .filter { it.name != "OpenLattice Audit Entity Set" }
                 .filter { !it.isLinking }
