@@ -86,12 +86,13 @@ class BackgroundIndexingService(
     private val entityTypes: IMap<UUID, EntityType> = hazelcastInstance.getMap(HazelcastMap.ENTITY_TYPES.name)
     private val entitySets: IMap<UUID, EntitySet> = hazelcastInstance.getMap(HazelcastMap.ENTITY_SETS.name)
 
-    override fun startupChecks() {
-        if (!configuration.backgroundIndexingEnabled) {
-            logger.info("Skipping background indexing as it is not enabled.")
-            return
-        }
+    override fun enqueuerEnabledCheck(): Boolean {
         ensureAllEntityTypeIndicesExist()
+        return configuration.backgroundIndexingEnabled
+    }
+
+    override fun workerEnabledCheck(): Boolean {
+        return configuration.backgroundIndexingEnabled
     }
 
     override fun operate(candidate: EntitySet) {
