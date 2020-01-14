@@ -24,13 +24,11 @@ package com.openlattice.indexing
 import com.google.common.base.Stopwatch
 import com.google.common.util.concurrent.ListeningExecutorService
 import com.hazelcast.core.HazelcastInstance
-import com.hazelcast.core.IMap
 import com.openlattice.conductor.rpc.ConductorElasticsearchApi
 import com.openlattice.data.storage.IndexingMetadataManager
 import com.openlattice.data.storage.MetadataOption
 import com.openlattice.data.storage.PostgresEntityDataQueryService
 import com.openlattice.edm.EntitySet
-import com.openlattice.edm.type.EntityType
 import com.openlattice.edm.type.PropertyType
 import com.openlattice.hazelcast.HazelcastMap
 import com.openlattice.hazelcast.HazelcastQueue
@@ -47,6 +45,7 @@ import com.openlattice.rhizome.core.service.ContinuousRepeatingTaskService
 import com.zaxxer.hikari.HikariDataSource
 import org.apache.olingo.commons.api.edm.EdmPrimitiveTypeKind
 import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -60,7 +59,9 @@ const val DEFAULT_CHUNK_SIZE = 10_000
 /** IMPORTANT! If this number is too big, elasticsearch will explode and everything will go down. Calibrate carefully. **/
 const val INDEX_SIZE = 1_000
 
-class BackgroundIndexingService(
+@Component
+class BackgroundIndexingService
+(
         executor: ListeningExecutorService,
         hazelcastInstance: HazelcastInstance,
         private val configuration: IndexerConfiguration,
@@ -68,13 +69,13 @@ class BackgroundIndexingService(
         private val dataQueryService: PostgresEntityDataQueryService,
         private val elasticsearchApi: ConductorElasticsearchApi,
         private val dataManager: IndexingMetadataManager
-): ContinuousRepeatingTaskService<EntitySet>(
+): ContinuousRepeatingTaskService<EntitySet, UUID>(
         executor,
-        hazelcastInstance,
         LoggerFactory.getLogger(BackgroundIndexingService::class.java),
-        HazelcastQueue.BACKGROUND_INDEXING.name,
-        HazelcastMap.INDEXING_LOCKS.name,
+        HazelcastQueue.BACKGROUND_INDEXING.getQueue(hazelcastInstance),
+        HazelcastMap.INDEXING_LOCKS.getMap(hazelcastInstance),
         Runtime.getRuntime().availableProcessors(),
+        { entitySet: EntitySet ->  entitySet.id },
         DEFAULT_CHUNK_SIZE,
         EXPIRATION_MILLIS
 ) {
