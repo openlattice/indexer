@@ -41,7 +41,7 @@ import com.openlattice.postgres.PostgresTable.IDS
 import com.openlattice.postgres.ResultSetAdapters
 import com.openlattice.postgres.streams.BasePostgresIterable
 import com.openlattice.postgres.streams.PreparedStatementHolderSupplier
-import com.openlattice.rhizome.core.service.ContinuousRepeatingTaskService
+import com.openlattice.rhizome.service.ContinuousRepeatingTaskService
 import com.zaxxer.hikari.HikariDataSource
 import org.apache.olingo.commons.api.edm.EdmPrimitiveTypeKind
 import org.slf4j.LoggerFactory
@@ -208,7 +208,6 @@ class BackgroundIndexingService
                 .asSequence()
                 .chunked(INDEX_SIZE)
                 .sumBy {
-                    refreshExpiration( entitySet )
                     if ( indexTombstoned ) {
                         unindexEntities(entitySet, it.toMap(), !reindexAll)
                     } else {
