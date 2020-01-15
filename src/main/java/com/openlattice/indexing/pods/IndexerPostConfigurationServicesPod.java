@@ -31,17 +31,25 @@ import com.openlattice.data.storage.EntityDatastore;
 import com.openlattice.data.storage.IndexingMetadataManager;
 import com.openlattice.data.storage.PostgresEntityDataQueryService;
 import com.openlattice.data.storage.partitions.PartitionManager;
-import com.openlattice.indexing.*;
+import com.openlattice.hazelcast.HazelcastMap;
+import com.openlattice.hazelcast.HazelcastQueue;
+import com.openlattice.indexing.BackgroundExpiredDataDeletionService;
+import com.openlattice.indexing.BackgroundIndexedEntitiesDeletionService;
+import com.openlattice.indexing.BackgroundIndexingService;
+import com.openlattice.indexing.BackgroundLinkingIndexingService;
+import com.openlattice.indexing.IndexingService;
 import com.openlattice.indexing.configuration.IndexerConfiguration;
 import com.openlattice.linking.LinkingQueryService;
 import com.openlattice.linking.PostgresLinkingFeedbackService;
 import com.openlattice.linking.graph.PostgresLinkingQueryService;
 import com.openlattice.organizations.ExternalDatabaseManagementService;
+import com.openlattice.rhizome.service.ContinuousRepeatingTaskRunner;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import javax.inject.Inject;
+import java.io.IOException;
 
 @Configuration
 public class IndexerPostConfigurationServicesPod {
@@ -99,10 +107,27 @@ public class IndexerPostConfigurationServicesPod {
         return new IndexingMetadataManager( hikariDataSource, partitionManager() );
     }
 
+    @Bean("BackgroundIndexingTask")
+    public ContinuousRepeatingTaskRunner backgroundLinkingTask() throws IOException {
+        return new ContinuousRepeatingTaskRunner(
+                executor,
+                HazelcastQueue.BACKGROUND_INDEXING.getQueue(hazelcastInstance),
+                HazelcastMap.INDEXING_LOCKS.getMap(hazelcastInstance),
+                Runtime.getRuntime().availableProcessors(),
+                10_000,
+                new BackgroundIndexingService(
+                        hazelcastInstance,
+                        indexerConfiguration,
+                        hikariDataSource,
+                        dataQueryService,
+                        elasticsearchApi,
+                        indexingMetadataManager() )
+        );
+    }
+
     @Bean
     public BackgroundIndexingService backgroundIndexingService() {
         return new BackgroundIndexingService(
-                executor,
                 hazelcastInstance,
                 indexerConfiguration,
                 hikariDataSource,

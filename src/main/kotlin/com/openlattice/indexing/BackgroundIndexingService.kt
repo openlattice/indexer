@@ -22,7 +22,6 @@
 package com.openlattice.indexing
 
 import com.google.common.base.Stopwatch
-import com.google.common.util.concurrent.ListeningExecutorService
 import com.hazelcast.core.HazelcastInstance
 import com.openlattice.conductor.rpc.ConductorElasticsearchApi
 import com.openlattice.data.storage.IndexingMetadataManager
@@ -31,7 +30,6 @@ import com.openlattice.data.storage.PostgresEntityDataQueryService
 import com.openlattice.edm.EntitySet
 import com.openlattice.edm.type.PropertyType
 import com.openlattice.hazelcast.HazelcastMap
-import com.openlattice.hazelcast.HazelcastQueue
 import com.openlattice.indexing.configuration.IndexerConfiguration
 import com.openlattice.postgres.DataTables.LAST_INDEX
 import com.openlattice.postgres.DataTables.LAST_WRITE
@@ -41,9 +39,10 @@ import com.openlattice.postgres.PostgresTable.IDS
 import com.openlattice.postgres.ResultSetAdapters
 import com.openlattice.postgres.streams.BasePostgresIterable
 import com.openlattice.postgres.streams.PreparedStatementHolderSupplier
-import com.openlattice.rhizome.service.ContinuousRepeatingTaskService
+import com.openlattice.rhizome.service.ContinuousRepeatableTask
 import com.zaxxer.hikari.HikariDataSource
 import org.apache.olingo.commons.api.edm.EdmPrimitiveTypeKind
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.time.OffsetDateTime
@@ -52,8 +51,8 @@ import java.util.concurrent.TimeUnit
 import java.util.stream.StreamSupport
 import kotlin.streams.asSequence
 
-const val EXPIRATION_MILLIS = 60_000L
 const val FETCH_SIZE = 128_000
+const val INDEXING_BATCH_TIMEOUT_MILLIS = 60_000L
 const val DEFAULT_CHUNK_SIZE = 10_000
 
 /** IMPORTANT! If this number is too big, elasticsearch will explode and everything will go down. Calibrate carefully. **/
@@ -62,23 +61,14 @@ const val INDEX_SIZE = 1_000
 @Component
 class BackgroundIndexingService
 (
-        executor: ListeningExecutorService,
         hazelcastInstance: HazelcastInstance,
         private val configuration: IndexerConfiguration,
         private val hds: HikariDataSource,
         private val dataQueryService: PostgresEntityDataQueryService,
         private val elasticsearchApi: ConductorElasticsearchApi,
         private val dataManager: IndexingMetadataManager
-): ContinuousRepeatingTaskService<EntitySet, UUID>(
-        executor,
-        LoggerFactory.getLogger(BackgroundIndexingService::class.java),
-        HazelcastQueue.BACKGROUND_INDEXING.getQueue(hazelcastInstance),
-        HazelcastMap.INDEXING_LOCKS.getMap(hazelcastInstance),
-        Runtime.getRuntime().availableProcessors(),
-        { entitySet: EntitySet ->  entitySet.id },
-        DEFAULT_CHUNK_SIZE,
-        EXPIRATION_MILLIS
-) {
+): ContinuousRepeatableTask<EntitySet, UUID> {
+
     companion object {
         private val logger = LoggerFactory.getLogger(BackgroundIndexingService::class.java)
     }
@@ -104,6 +94,18 @@ class BackgroundIndexingService
         return entitySets.values.asSequence()
                 .filter { it.name != "OpenLattice Audit Entity Set" }
                 .filter { !it.isLinking }
+    }
+
+    override fun candidateLockFunction(candidate: EntitySet): UUID {
+        return candidate.id
+    }
+
+    override fun getLogger(): Logger {
+        return BackgroundIndexingService.logger
+    }
+
+    override fun getTimeoutMillis() : Long {
+        return INDEXING_BATCH_TIMEOUT_MILLIS
     }
 
     private fun ensureAllEntityTypeIndicesExist() {

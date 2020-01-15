@@ -26,7 +26,6 @@ import com.kryptnostic.rhizome.configuration.ConfigurationConstants.Profiles;
 import com.kryptnostic.rhizome.configuration.amazon.AmazonLaunchConfiguration;
 import com.kryptnostic.rhizome.configuration.service.ConfigurationService;
 import com.openlattice.ResourceConfigurationLoader;
-import com.openlattice.conductor.rpc.ConductorConfiguration;
 import com.openlattice.indexing.configuration.IndexerConfiguration;
 import java.io.IOException;
 import javax.inject.Inject;
