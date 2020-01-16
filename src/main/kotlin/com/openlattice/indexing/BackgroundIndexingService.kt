@@ -108,6 +108,10 @@ class BackgroundIndexingService
         return INDEXING_BATCH_TIMEOUT_MILLIS
     }
 
+    override fun getTaskClass(): Class<Any> {
+        return BackgroundIndexingService.javaClass
+    }
+
     private fun ensureAllEntityTypeIndicesExist() {
         val existingIndices = elasticsearchApi.entityTypesWithIndices
         val missingIndices = entityTypes.keys - existingIndices
