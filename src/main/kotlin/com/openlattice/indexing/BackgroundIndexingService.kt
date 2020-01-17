@@ -67,7 +67,7 @@ class BackgroundIndexingService
         private val dataQueryService: PostgresEntityDataQueryService,
         private val elasticsearchApi: ConductorElasticsearchApi,
         private val dataManager: IndexingMetadataManager
-): ContinuousRepeatableTask<EntitySet, UUID> {
+): ContinuousRepeatableTask<EntitySet> {
 
     companion object {
         private val logger = LoggerFactory.getLogger(BackgroundIndexingService::class.java)
@@ -94,10 +94,6 @@ class BackgroundIndexingService
         return entitySets.values.asSequence()
                 .filter { it.name != "OpenLattice Audit Entity Set" }
                 .filter { !it.isLinking }
-    }
-
-    override fun candidateLockFunction(candidate: EntitySet): UUID {
-        return candidate.id
     }
 
     override fun getLogger(): Logger {
