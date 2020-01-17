@@ -22,7 +22,6 @@ package com.openlattice.indexing.pods;
 
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.hazelcast.core.HazelcastInstance;
-import com.openlattice.BackgroundExternalDatabaseSyncingService;
 import com.openlattice.auditing.AuditingManager;
 import com.openlattice.conductor.rpc.ConductorElasticsearchApi;
 import com.openlattice.data.DataDeletionManager;
@@ -33,10 +32,7 @@ import com.openlattice.data.storage.PostgresEntityDataQueryService;
 import com.openlattice.data.storage.partitions.PartitionManager;
 import com.openlattice.hazelcast.HazelcastMap;
 import com.openlattice.hazelcast.HazelcastQueue;
-import com.openlattice.indexing.BackgroundExpiredDataDeletionService;
-import com.openlattice.indexing.BackgroundIndexedEntitiesDeletionService;
 import com.openlattice.indexing.BackgroundIndexingService;
-import com.openlattice.indexing.BackgroundLinkingIndexingService;
 import com.openlattice.indexing.IndexingService;
 import com.openlattice.indexing.configuration.IndexerConfiguration;
 import com.openlattice.linking.LinkingQueryService;
@@ -113,20 +109,14 @@ public class IndexerPostConfigurationServicesPod {
                 executor,
                 HazelcastQueue.BACKGROUND_INDEXING.getQueue(hazelcastInstance),
                 HazelcastMap.INDEXING_LOCKS.getMap(hazelcastInstance),
+                backgroundIndexingService(),
                 Runtime.getRuntime().availableProcessors(),
-                10_000,
-                new BackgroundIndexingService(
-                        hazelcastInstance,
-                        indexerConfiguration,
-                        hikariDataSource,
-                        dataQueryService,
-                        elasticsearchApi,
-                        indexingMetadataManager() )
+                1
         );
     }
 
     @Bean
-    public BackgroundIndexingService backgroundIndexingService() {
+    BackgroundIndexingService backgroundIndexingService() {
         return new BackgroundIndexingService(
                 hazelcastInstance,
                 indexerConfiguration,
@@ -136,45 +126,45 @@ public class IndexerPostConfigurationServicesPod {
                 indexingMetadataManager() );
     }
 
-    @Bean
-    public BackgroundLinkingIndexingService backgroundLinkingIndexingService() {
-        return new BackgroundLinkingIndexingService(
-                hazelcastInstance,
-                executor,
-                hikariDataSource,
-                elasticsearchApi,
-                indexingMetadataManager(),
-                entityDatastore,
-                indexerConfiguration );
-    }
-
-    @Bean
-    public BackgroundIndexedEntitiesDeletionService backgroundIndexedEntitiesDeletionService() {
-        return new BackgroundIndexedEntitiesDeletionService(
-                hazelcastInstance,
-                hikariDataSource,
-                indexerConfiguration,
-                dataQueryService
-        );
-    }
-
-    @Bean
-    public BackgroundExpiredDataDeletionService backgroundExpiredDataDeletionService() {
-        return new BackgroundExpiredDataDeletionService(
-                hazelcastInstance,
-                indexerConfiguration,
-                auditingManager,
-                dataGraphService,
-                dataDeletionManager );
-    }
-
-    @Bean
-    public BackgroundExternalDatabaseSyncingService backgroundExternalDatabaseUpdatingService() {
-        return new BackgroundExternalDatabaseSyncingService(
-                hazelcastInstance,
-                edms,
-                indexerConfiguration);
-    }
+//    @Bean
+//    public BackgroundLinkingIndexingService backgroundLinkingIndexingService() {
+//        return new BackgroundLinkingIndexingService(
+//                hazelcastInstance,
+//                executor,
+//                hikariDataSource,
+//                elasticsearchApi,
+//                indexingMetadataManager(),
+//                entityDatastore,
+//                indexerConfiguration );
+//    }
+//
+//    @Bean
+//    public BackgroundIndexedEntitiesDeletionService backgroundIndexedEntitiesDeletionService() {
+//        return new BackgroundIndexedEntitiesDeletionService(
+//                hazelcastInstance,
+//                hikariDataSource,
+//                indexerConfiguration,
+//                dataQueryService
+//        );
+//    }
+//
+//    @Bean
+//    public BackgroundExpiredDataDeletionService backgroundExpiredDataDeletionService() {
+//        return new BackgroundExpiredDataDeletionService(
+//                hazelcastInstance,
+//                indexerConfiguration,
+//                auditingManager,
+//                dataGraphService,
+//                dataDeletionManager );
+//    }
+//
+//    @Bean
+//    public BackgroundExternalDatabaseSyncingService backgroundExternalDatabaseUpdatingService() {
+//        return new BackgroundExternalDatabaseSyncingService(
+//                hazelcastInstance,
+//                edms,
+//                indexerConfiguration);
+//    }
 
     @Bean
     public IndexingService indexingService() {
