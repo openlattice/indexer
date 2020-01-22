@@ -171,11 +171,6 @@ public class IndexerServicesPod {
     }
 
     @Bean
-    public UserDirectoryService userDirectoryService() {
-        return new UserDirectoryService( auth0TokenProvider(), hazelcastInstance );
-    }
-
-    @Bean
     public Assembler assembler() {
         return new Assembler(
                 dbcs(),
@@ -223,11 +218,6 @@ public class IndexerServicesPod {
                 phoneNumberService(),
                 partitionManager(),
                 assembler() );
-    }
-
-    @Bean
-    public Auth0TokenProvider auth0TokenProvider() {
-        return new Auth0TokenProvider( auth0Configuration );
     }
 
     @Bean
@@ -361,7 +351,7 @@ public class IndexerServicesPod {
                 aclKeyReservationService(),
                 authorizationManager(),
                 organizationExternalDatabaseConfiguration,
-                hikariDataSource);
+                hikariDataSource );
     }
 
     @Bean( name = "auditingManager" )
