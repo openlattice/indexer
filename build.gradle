@@ -55,7 +55,7 @@ ext.scmUrl = 'scm:git:https://github.com/openlattice/indexer.git'
 ext.connectionUrl = 'scm:git:https://github.com/openlattice/indexer.git'
 ext.developerConnectionUrl = 'scm:git:https://github.com/openlattice/indexer.git'
 
-apply from: "https://raw.githubusercontent.com/openlattice/gradles/master/openlattice.gradle"
+apply from: "https://raw.githubusercontent.com/openlattice/gradles/hotfix-2020-02-20/openlattice.gradle"
 apply plugin: 'kotlin'
 apply plugin: 'license-report'
 
@@ -104,7 +104,7 @@ println "Enabled profiles: " + Arrays.toString(run.args)
 
 checkstyle {
   toolVersion = "${checkstyle_version}"
-  config project.resources.text.fromUri('https://raw.githubusercontent.com/openlattice/gradles/master/checkstyle.xml')
+  config project.resources.text.fromUri('https://raw.githubusercontent.com/openlattice/gradles/hotfix-2020-02-20/checkstyle.xml')
 }
 tasks.withType(Checkstyle) {
     reports {
