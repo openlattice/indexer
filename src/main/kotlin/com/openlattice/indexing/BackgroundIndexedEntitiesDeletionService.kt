@@ -26,14 +26,14 @@ import com.hazelcast.query.Predicate
 import com.hazelcast.query.Predicates
 import com.hazelcast.query.QueryConstants
 import com.openlattice.data.storage.PostgresEntityDataQueryService
-import com.openlattice.postgres.PostgresTable.IDS
-import com.openlattice.postgres.DataTables.LAST_INDEX
 import com.openlattice.edm.EntitySet
 import com.openlattice.hazelcast.HazelcastMap
 import com.openlattice.indexing.configuration.IndexerConfiguration
+import com.openlattice.postgres.DataTables.LAST_INDEX
 import com.openlattice.postgres.DataTables.LAST_WRITE
 import com.openlattice.postgres.PostgresArrays
 import com.openlattice.postgres.PostgresColumn.*
+import com.openlattice.postgres.PostgresTable.IDS
 import com.openlattice.postgres.ResultSetAdapters
 import com.openlattice.postgres.streams.BasePostgresIterable
 import com.openlattice.postgres.streams.PreparedStatementHolderSupplier
@@ -172,7 +172,7 @@ class BackgroundIndexedEntitiesDeletionService(
                 "${PARTITION.name} = ANY(?) AND " +
                 "${VERSION.name} = 0 AND " +
                 "( " +
-                    "(${LAST_INDEX.name} >= ${LAST_WRITE.name}) " +
+                    "(${LAST_INDEX.name} >= ${LAST_WRITE.name} AND ${LAST_PROPAGATE.name} >= ${LAST_WRITE.name}) " +
                     "OR " +
                     "(${LAST_LINK_INDEX.name} >= ${LAST_WRITE.name} AND ${LINKING_ID.name} IS NOT NULL) " +
                 ")"
