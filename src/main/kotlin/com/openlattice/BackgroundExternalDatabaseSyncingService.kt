@@ -162,6 +162,9 @@ class BackgroundExternalDatabaseSyncingService(
             edms.deleteOrganizationExternalDatabaseColumns(orgId, missingColumnsByTable)
             totalSynced += missingColumnIds.size
         }
+
+        //TODO sync row based permissions
+
         return totalSynced
     }
 
