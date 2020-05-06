@@ -11,14 +11,14 @@ import com.openlattice.auditing.AuditEventType
 import com.openlattice.auditing.AuditRecordEntitySetsManager
 import com.openlattice.auditing.AuditableEvent
 import com.openlattice.auditing.AuditingManager
-import com.openlattice.authorization.Acl
-import com.openlattice.authorization.AclKey
+import com.openlattice.authorization.*
 import com.openlattice.hazelcast.HazelcastMap
 import com.openlattice.indexing.MAX_DURATION_MILLIS
 import com.openlattice.indexing.configuration.IndexerConfiguration
 import com.openlattice.organization.OrganizationExternalDatabaseColumn
 import com.openlattice.organization.OrganizationExternalDatabaseTable
 import com.openlattice.organizations.ExternalDatabaseManagementService
+import com.openlattice.organizations.OL_OWNER_PERMISSIONS
 import org.apache.olingo.commons.api.edm.FullQualifiedName
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
@@ -109,7 +109,7 @@ class BackgroundExternalDatabaseSyncingService(
     private fun syncOrganizationDatabases(orgId: UUID): Int {
         var totalSynced = 0
         val dbName = PostgresDatabases.buildOrganizationDatabaseName(orgId)
-        val orgOwnerIds = edms.getOrganizationOwners(orgId).map { it.id }
+        val orgAdminRole = edms.getOrganizationAdminRole(orgId)
         val currentTableIds = mutableSetOf<UUID>()
         val currentColumnIds = mutableSetOf<UUID>()
         val currentColumnNamesByTableName = edms.getColumnNamesByTable(dbName)
@@ -120,11 +120,11 @@ class BackgroundExternalDatabaseSyncingService(
             if (tableId == null) {
                 //create new securable object for this table
                 val newTable = OrganizationExternalDatabaseTable(Optional.empty(), tableName, tableName, Optional.empty(), orgId)
-                val newTableId = createSecurableTableObject(dbName, orgOwnerIds, orgId, currentTableIds, newTable)
+                val newTableId = createSecurableTableObject(dbName, orgAdminRole, orgId, currentTableIds, newTable)
                 totalSynced++
 
                 //create new securable objects for columns in this table
-                totalSynced += createSecurableColumnObjects(dbName, orgOwnerIds, orgId, newTable.name, newTableId, Optional.empty(), currentColumnIds)
+                totalSynced += createSecurableColumnObjects(dbName, orgAdminRole, orgId, newTable.name, newTableId, Optional.empty(), currentColumnIds)
             } else {
                 currentTableIds.add(tableId)
                 //check if columns existed previously
@@ -133,7 +133,7 @@ class BackgroundExternalDatabaseSyncingService(
                     val columnId = aclKeys[columnFQN.fullQualifiedNameAsString]
                     if (columnId == null) {
                         //create new securable object for this column
-                        totalSynced += createSecurableColumnObjects(dbName, orgOwnerIds, orgId, tableName, tableId, Optional.of(it), currentColumnIds)
+                        totalSynced += createSecurableColumnObjects(dbName, orgAdminRole, orgId, tableName, tableId, Optional.of(it), currentColumnIds)
                     } else {
                         currentColumnIds.add(columnId)
                     }
@@ -148,7 +148,7 @@ class BackgroundExternalDatabaseSyncingService(
 
     private fun createSecurableTableObject(
             dbName: String,
-            orgOwnerIds: List<UUID>,
+            orgAdminRole: SecurablePrincipal,
             orgId: UUID,
             currentTableIds: MutableSet<UUID>,
             table: OrganizationExternalDatabaseTable
@@ -157,7 +157,7 @@ class BackgroundExternalDatabaseSyncingService(
         currentTableIds.add(newTableId)
 
         //add table-level permissions
-        val acls = edms.syncPermissions(dbName, orgOwnerIds, orgId, newTableId, table.name, Optional.empty(), Optional.empty())
+        val acls = edms.initializeSecurableObjectPermissions(dbName, orgAdminRole, orgId, newTableId, table.name, Optional.empty(), Optional.empty())
 
         //create audit entity set and audit permissions
         ares.createAuditEntitySetForExternalDBTable(table)
@@ -169,7 +169,7 @@ class BackgroundExternalDatabaseSyncingService(
 
     private fun createSecurableColumnObjects(
             dbName: String,
-            orgOwnerIds: List<UUID>,
+            orgAdminRole: SecurablePrincipal,
             orgId: UUID,
             tableName: String,
             tableId: UUID,
@@ -177,29 +177,37 @@ class BackgroundExternalDatabaseSyncingService(
             currentColumnIds: MutableSet<UUID>
     ): Int {
         var totalSynced = 0
-        edms.getColumnMetadata(dbName, tableName, tableId, orgId, columnName)
-                .forEach { column ->
-                    createSecurableColumnObject(dbName, orgOwnerIds, orgId, tableName, currentColumnIds, column)
+        val adminAceAsIterable = listOf(Ace(orgAdminRole.principal, OL_OWNER_PERMISSIONS))
+
+        val acls = edms.getColumnMetadata(dbName, tableName, tableId, orgId, columnName)
+                .map { column ->
+                    val columnId = createSecurableColumnObject(dbName, orgAdminRole, orgId, tableName, currentColumnIds, column)
                     totalSynced++
+
+                    return@map Acl(AclKey(tableId, columnId), adminAceAsIterable)
                 }
+
+        edms.executePrivilegesUpdate(Action.ADD, acls)
         return totalSynced
     }
 
     private fun createSecurableColumnObject(
             dbName: String,
-            orgOwnerIds: List<UUID>,
+            orgAdminRole: SecurablePrincipal,
             orgId: UUID,
             tableName: String,
             currentColumnIds: MutableSet<UUID>,
             column: OrganizationExternalDatabaseColumn
-    ) {
+    ): UUID {
         val newColumnId = edms.createOrganizationExternalDatabaseColumn(orgId, column)
         currentColumnIds.add(newColumnId)
 
         //add and audit column-level permissions and postgres privileges
-        val acls = edms.syncPermissions(dbName, orgOwnerIds, orgId, column.tableId, tableName, Optional.of(newColumnId), Optional.of(column.name))
+        val acls = edms.initializeSecurableObjectPermissions(dbName, orgAdminRole, orgId, column.tableId, tableName, Optional.of(newColumnId), Optional.of(column.name))
         val events = createAuditableEvents(acls, AuditEventType.ADD_PERMISSION)
         auditingManager.recordEvents(events)
+
+        return newColumnId
     }
 
     private fun createAuditableEvents(acls: List<Acl>, eventType: AuditEventType): List<AuditableEvent> {
