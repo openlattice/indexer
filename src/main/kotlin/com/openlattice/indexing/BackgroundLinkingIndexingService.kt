@@ -101,13 +101,13 @@ class BackgroundLinkingIndexingService(
      * Queue containing linking ids, which need to be re-indexed in elasticsearch.
      */
     private val indexCandidates =
-            HazelcastQueue.LINKING_INDEXING.getQueue( hazelcastInstance )
+            HazelcastQueue.LINKING_INDEXING.getQueue(hazelcastInstance)
 
     /**
      * Queue containing linking ids, which need to be un-indexed (deleted) from elasticsearch.
      */
     private val unIndexCandidates =
-            HazelcastQueue.LINKING_UNINDEXING.getQueue( hazelcastInstance )
+            HazelcastQueue.LINKING_UNINDEXING.getQueue(hazelcastInstance)
 
 
     @Suppress("UNUSED")
@@ -131,7 +131,7 @@ class BackgroundLinkingIndexingService(
                     if (createMode) {
                         getDirtyLinkingIds()
                     } else {
-                        getDeletedLinkingIds()
+                        getClearedLinkingIds()
                     }
                             .filter { lockOrRefresh(it.second) }
                             .forEach {
@@ -384,10 +384,8 @@ class BackgroundLinkingIndexingService(
      * Returns the linking ids which are needing to be un-indexed (to delete those documents) along with last_write and
      * their entity set ids and origin ids as a list of arrays with 2 elements.
      */
-    private fun getDeletedLinkingIds(): BasePostgresIterable<Triple<List<Array<UUID>>, UUID, OffsetDateTime>> {
-        return BasePostgresIterable(
-                StatementHolderSupplier(hds, selectDeletedLinkingIds, FETCH_SIZE)
-        ) { rs ->
+    private fun getClearedLinkingIds(): BasePostgresIterable<Triple<List<Array<UUID>>, UUID, OffsetDateTime>> {
+        return BasePostgresIterable(StatementHolderSupplier(hds, selectClearedLinkingIds)) { rs ->
             val entityDataKeysRaw = PostgresArrays.getUuidArrayOfArrays(rs, ENTITY_DATA_KEY)!!.toList()
             Triple(
                     entityDataKeysRaw,
@@ -412,6 +410,16 @@ internal val needsLinkingUnIndexing =
         "${LAST_INDEX.name} >= ${LAST_WRITE.name} AND "+
         "${LAST_LINK_INDEX.name} < ${LAST_WRITE.name} "
         // @formatter:on
+
+//Hard delete will be handled separately.
+internal val selectClearedLinkingIds = """
+    SELECT ${LINKING_ID.name},array_agg(ARRAY[${ENTITY_SET_ID.name},${ID.name}]) as $ENTITY_DATA_KEY, max(${LAST_WRITE.name}) as ${LAST_WRITE.name}
+      FROM ${IDS.name}
+      WHERE ${VERSION.name} < 0 AND $needsLinkingUnIndexing
+      GROUP BY ${LINKING_ID.name}
+      "LIMIT $LINKING_INDEX_QUERY_LIMIT"
+""".trimIndent()
+
 
 /**
  * Select linking ids, where ALL normal entities are cleared or deleted.
