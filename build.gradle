@@ -153,6 +153,7 @@ dependencies {
         compile project(":scrunchie")
         compile project(":courier")
         testCompile(project(path: ":rhizome-client", configuration: "tests"))
+        testCompile(project(path: ":conductor-client", configuration: "tests"))
     } else {
         logger.quiet(project.name + " using jar dependencies.")
         compile "com.openlattice:rhizome:${rhizome_version}"
@@ -160,12 +161,14 @@ dependencies {
         compile "com.openlattice:scrunchie:${scrunchie_version}"
         compile "com.openlattice:courier:${courier_version}"
         testCompile "com.openlattice:rhizome-client:${rhizome_client_version}:tests"
+        testCompile "com.openlattice:conductor-client:${conductor_client_version}:tests"
     }
     /*
      * TESTING
      */
     testCompile "junit:junit:${junit_version}"
     testCompile "org.mockito:mockito-all:${mockito_version}"
+
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
 }
 
