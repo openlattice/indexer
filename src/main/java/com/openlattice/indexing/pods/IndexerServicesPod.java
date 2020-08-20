@@ -162,9 +162,7 @@ public class IndexerServicesPod {
     public Assembler assembler() {
         return new Assembler(
                 dbcs(),
-                hikariDataSource,
                 authorizationManager(),
-                edmAuthorizationHelper(),
                 principalService(),
                 metricRegistry,
                 hazelcastInstance,
@@ -205,11 +203,6 @@ public class IndexerServicesPod {
                 phoneNumberService(),
                 partitionManager(),
                 assembler() );
-    }
-
-    @Bean
-    public EdmAuthorizationHelper edmAuthorizationHelper() {
-        return new EdmAuthorizationHelper( dataModelService(), authorizationManager(), entitySetManager() );
     }
 
     @Bean

@@ -4,7 +4,6 @@ import com.google.common.base.Stopwatch
 import com.google.common.collect.ImmutableMap
 import com.hazelcast.config.IndexType
 import com.hazelcast.core.HazelcastInstance
-import com.hazelcast.query.Predicate
 import com.hazelcast.query.Predicates
 import com.hazelcast.query.QueryConstants
 import com.openlattice.assembler.PostgresDatabases
@@ -132,7 +131,8 @@ class BackgroundExternalDatabaseSyncingService(
                         Optional.empty(),
                         orgId
                 )
-                val newTableId = createSecurableTableObject(dbName, orgOwnerIds, orgId, currentTableIds, newTable)
+                val newTableId = createSecurableTableObject(dbName, orgOwnerIds, orgId, newTable)
+                currentTableIds.add(newTableId)
                 totalSynced++
 
                 //create new securable objects for columns in this table
@@ -166,9 +166,7 @@ class BackgroundExternalDatabaseSyncingService(
                         currentColumnIds.add(columnId)
                     }
                 }
-
             }
-
         }
 
         //check if tables have been deleted in the database
@@ -203,11 +201,9 @@ class BackgroundExternalDatabaseSyncingService(
             dbName: String,
             orgOwnerIds: List<UUID>,
             orgId: UUID,
-            currentTableIds: MutableSet<UUID>,
             table: OrganizationExternalDatabaseTable
     ): UUID {
         val newTableId = edms.createOrganizationExternalDatabaseTable(orgId, table)
-        currentTableIds.add(newTableId)
 
         //add table-level permissions
         val acls = edms.syncPermissions(
