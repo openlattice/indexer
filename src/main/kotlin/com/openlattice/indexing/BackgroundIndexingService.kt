@@ -28,6 +28,7 @@ import com.openlattice.data.storage.IndexingMetadataManager
 import com.openlattice.data.storage.MetadataOption
 import com.openlattice.data.storage.PostgresEntityDataQueryService
 import com.openlattice.edm.EntitySet
+import com.openlattice.edm.set.EntitySetFlag
 import com.openlattice.edm.type.PropertyType
 import com.openlattice.hazelcast.HazelcastMap
 import com.openlattice.indexing.configuration.IndexerConfiguration
@@ -96,8 +97,7 @@ class BackgroundIndexingService(
             val w = Stopwatch.createStarted()
             //We shuffle entity sets to make sure we have a chance to work share and index everything
             val lockedEntitySets = entitySets.values
-                    .filter { !it.isLinking }
-                    .filter { it.name != "OpenLattice Audit Entity Set" } //TODO: Clean out audit entity set from prod
+                    .filter { !it.isLinking && !it.flags.contains(EntitySetFlag.AUDIT) }
                     .filter { tryLockEntitySet(it.id) == null }
                     .shuffled()
 
@@ -251,7 +251,7 @@ class BackgroundIndexingService(
                 mapOf(entitySet.id to propertyTypeMap),
                 mapOf(),
                 EnumSet.of(MetadataOption.LAST_WRITE)
-        ).toMap()
+        )
 
         logger.info("Loading data for indexEntities took {} ms", esb.elapsed(TimeUnit.MILLISECONDS))
 
